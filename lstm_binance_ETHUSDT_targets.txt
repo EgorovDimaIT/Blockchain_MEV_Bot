@@ -1,0 +1,5 @@
+return_1h
+return_3h
+return_6h
+return_12h
+return_24h

@@ -1,0 +1,557 @@
+{% extends "layout.html" %}
+
+{% block title %}MEV Bot - Advanced Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Advanced Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="dropdown me-2">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeRangeDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i data-feather="calendar"></i>
+                <span id="currentTimeRange">Last 24 Hours</span>
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="timeRangeDropdown">
+                <li><a class="dropdown-item time-range-option" href="#" data-range="24h">Last 24 Hours</a></li>
+                <li><a class="dropdown-item time-range-option" href="#" data-range="7d">Last 7 Days</a></li>
+                <li><a class="dropdown-item time-range-option" href="#" data-range="30d">Last 30 Days</a></li>
+                <li><a class="dropdown-item time-range-option" href="#" data-range="all">All Time</a></li>
+            </ul>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshDashboardBtn">
+            <i data-feather="refresh-cw"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card bg-dark text-white h-100">
+            <div class="card-body">
+                <h5 class="card-title">Executed Opportunities</h5>
+                <h2 class="card-text">
+                    {{ performance_metrics.executed_opportunities }}
+                </h2>
+                <p class="card-text">
+                    <span class="badge bg-success">{{ performance_metrics.successful_transactions }}</span> Successful |
+                    <span class="badge bg-danger">{{ performance_metrics.failed_transactions }}</span> Failed
+                </p>
+                <div class="progress bg-dark">
+                    {% if performance_metrics.executed_opportunities > 0 %}
+                        {% set success_rate = (performance_metrics.successful_transactions / performance_metrics.executed_opportunities * 100)|round|int %}
+                    {% else %}
+                        {% set success_rate = 0 %}
+                    {% endif %}
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ success_rate }}%" aria-valuenow="{{ success_rate }}" aria-valuemin="0" aria-valuemax="100">{{ success_rate }}%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-dark text-white h-100">
+            <div class="card-body">
+                <h5 class="card-title">Total Profit</h5>
+                <h2 class="card-text text-success">
+                    {{ performance_metrics.total_profit_eth|round(4) }} ETH
+                </h2>
+                <p class="card-text">
+                    ${{ performance_metrics.total_profit_usd|round(2) }}
+                </p>
+                <div class="small text-muted">
+                    Highest profit: {{ performance_metrics.highest_profit_tx.profit_eth|round(4) if performance_metrics.highest_profit_tx else '0.0000' }} ETH
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-dark text-white h-100">
+            <div class="card-body">
+                <h5 class="card-title">Gas Usage</h5>
+                <h2 class="card-text">
+                    {{ performance_metrics.total_gas_used_eth|round(4) }} ETH
+                </h2>
+                <p class="card-text">
+                    ROI: <span class="{% if performance_metrics.roi_percentage > 0 %}text-success{% else %}text-danger{% endif %}">{{ performance_metrics.roi_percentage|round|int }}%</span>
+                </p>
+                <div class="small text-muted">
+                    Net profit: {{ (performance_metrics.total_profit_eth - performance_metrics.total_gas_used_eth)|round(4) }} ETH
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-dark text-white h-100">
+            <div class="card-body">
+                <h5 class="card-title">Last 24h Activity</h5>
+                <h2 class="card-text">
+                    {{ performance_metrics.last_24h_transactions }} Txs
+                </h2>
+                <p class="card-text">
+                    Profit: <span class="{% if performance_metrics.last_24h_profit_eth > 0 %}text-success{% else %}text-danger{% endif %}">{{ performance_metrics.last_24h_profit_eth|round(4) }} ETH</span>
+                </p>
+                <div class="small text-muted">
+                    {% if performance_metrics.last_24h_transactions > 0 %}
+                        Avg profit: {{ (performance_metrics.last_24h_profit_eth / performance_metrics.last_24h_transactions)|round(4) }} ETH/tx
+                    {% else %}
+                        No transactions in last 24h
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row">
+    <div class="col-lg-8 mb-4">
+        <div class="card bg-dark text-white">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Profit & Transaction History</h5>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary active chart-type-btn" data-type="profit">Profit</button>
+                    <button type="button" class="btn btn-outline-secondary chart-type-btn" data-type="transactions">Transactions</button>
+                    <button type="button" class="btn btn-outline-secondary chart-type-btn" data-type="gas">Gas</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="historyChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-4">
+        <div class="card bg-dark text-white">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Strategy Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="strategyDistributionChart" height="250"></canvas>
+                <div class="mt-3 small" id="strategyStats">
+                    <div class="d-flex justify-content-between">
+                        <span>Arbitrage:</span>
+                        <span class="text-info">0 txs</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Sandwich:</span>
+                        <span class="text-primary">0 txs</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Liquidation:</span>
+                        <span class="text-success">0 txs</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ML Models & Performance -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card bg-dark text-white">
+            <div class="card-header">
+                <h5 class="card-title mb-0">ML Model Performance</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>Model Name</th>
+                                <th>Type</th>
+                                <th>Accuracy</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if ml_models %}
+                                {% for model in ml_models %}
+                                    <tr>
+                                        <td>{{ model.name }}</td>
+                                        <td>{{ model.model_type }}</td>
+                                        <td>{% if model.accuracy %}{{ (model.accuracy * 100)|round(2) }}%{% else %}N/A{% endif %}</td>
+                                        <td>{{ model.created_at.strftime('%Y-%m-%d') }}</td>
+                                        <td>
+                                            {% if model.is_active %}
+                                                <span class="badge bg-success">Active</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-info btn-sm view-model-btn" data-model-id="{{ model.id }}">
+                                                    <i data-feather="eye"></i>
+                                                </button>
+                                                {% if not model.is_active %}
+                                                    <button type="button" class="btn btn-outline-success btn-sm activate-model-btn" data-model-id="{{ model.id }}">
+                                                        <i data-feather="check"></i>
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center">No ML models available</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="button" class="btn btn-primary btn-sm me-2" id="trainModelBtn">
+                        <i data-feather="cpu"></i> Train New Model
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm" id="evaluateModelBtn">
+                        <i data-feather="bar-chart-2"></i> Evaluate Models
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Transactions Table -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card bg-dark text-white">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Transaction History</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="showOnlySuccessfulSwitch">
+                    <label class="form-check-label" for="showOnlySuccessfulSwitch">Show only successful</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Tx Hash</th>
+                                <th>Strategy</th>
+                                <th>Status</th>
+                                <th>Gas (ETH)</th>
+                                <th>Profit (ETH)</th>
+                                <th>ROI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionTableBody">
+                            {% for tx in transaction_data %}
+                                <tr class="{% if tx.profit <= 0 %}table-danger{% endif %}">
+                                    <td>{{ tx.date }}</td>
+                                    <td>
+                                        <a href="https://etherscan.io/tx/{{ tx.hash }}" target="_blank" class="text-truncate" style="max-width: 150px; display: inline-block;">
+                                            {{ tx.hash[:8] }}...{{ tx.hash[-6:] if tx.hash else '' }}
+                                        </a>
+                                    </td>
+                                    <td>{{ tx.strategy|capitalize }}</td>
+                                    <td>
+                                        {% if tx.profit > 0 %}
+                                            <span class="badge bg-success">Success</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ tx.gas_cost|round(5) }}</td>
+                                    <td class="{% if tx.profit > 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ tx.profit|round(5) }}
+                                    </td>
+                                    <td>
+                                        {% if tx.gas_cost > 0 %}
+                                            <span class="{% if (tx.profit / tx.gas_cost) > 1 %}text-success{% else %}text-danger{% endif %}">
+                                                {{ ((tx.profit / tx.gas_cost) * 100)|round|int }}%
+                                            </span>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center">No transaction data available</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        <span class="small text-muted">Showing <span id="shownTxCount">{{ transaction_data|length }}</span> of <span id="totalTxCount">{{ transaction_data|length }}</span> transactions</span>
+                    </div>
+                    <div>
+                        <a href="/transactions" class="btn btn-outline-primary btn-sm">View All Transactions</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Current Bot Settings -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card bg-dark text-white">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Bot Configuration</h5>
+                <a href="/settings" class="btn btn-outline-secondary btn-sm">
+                    <i data-feather="edit"></i> Edit Settings
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <div class="setting-item">
+                            <div class="small text-muted">Min Profit Threshold</div>
+                            <div class="fw-bold">{{ settings.get('min_profit_threshold', '0.002')|float * 100 }}% ({{ settings.get('min_profit_threshold', '0.002')|float }})</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="setting-item">
+                            <div class="small text-muted">Max Gas Price</div>
+                            <div class="fw-bold">{{ settings.get('max_gas_price', '100') }} Gwei</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="setting-item">
+                            <div class="small text-muted">Active Strategies</div>
+                            <div class="fw-bold">
+                                {% for strategy in settings.get('active_strategies', 'arbitrage,sandwich').split(',') %}
+                                    <span class="badge bg-info">{{ strategy|capitalize }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="setting-item">
+                            <div class="small text-muted">Flashbots Enabled</div>
+                            <div class="fw-bold">
+                                {% if settings.get('flashbots_enabled', 'true') == 'true' %}
+                                    <span class="badge bg-success">Enabled</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Disabled</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Model details modal -->
+<div class="modal fade" id="modelDetailsModal" tabindex="-1" aria-labelledby="modelDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modelDetailsModalLabel">ML Model Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Basic Information</h6>
+                        <table class="table table-dark table-sm">
+                            <tr>
+                                <td>Name:</td>
+                                <td id="modalModelName">-</td>
+                            </tr>
+                            <tr>
+                                <td>Type:</td>
+                                <td id="modalModelType">-</td>
+                            </tr>
+                            <tr>
+                                <td>Created:</td>
+                                <td id="modalModelCreated">-</td>
+                            </tr>
+                            <tr>
+                                <td>Accuracy:</td>
+                                <td id="modalModelAccuracy">-</td>
+                            </tr>
+                            <tr>
+                                <td>Status:</td>
+                                <td id="modalModelStatus">-</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Performance Metrics</h6>
+                        <div id="modelPerformanceChart" style="height: 200px;"></div>
+                    </div>
+                </div>
+                
+                <h6>Hyperparameters</h6>
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm" id="hyperparametersTable">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="2" class="text-center">No data available</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="activateModelBtn">Activate Model</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Train Model Modal -->
+<div class="modal fade" id="trainModelModal" tabindex="-1" aria-labelledby="trainModelModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header">
+                <h5 class="modal-title" id="trainModelModalLabel">Train New ML Model</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="trainModelForm">
+                    <div class="mb-3">
+                        <label for="modelName" class="form-label">Model Name</label>
+                        <input type="text" class="form-control" id="modelName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="modelType" class="form-label">Model Type</label>
+                        <select class="form-select" id="modelType" required>
+                            <option value="lstm">LSTM</option>
+                            <option value="transformer">Transformer</option>
+                            <option value="ensemble">Ensemble</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="trainingData" class="form-label">Training Dataset</label>
+                        <select class="form-select" id="trainingData" required>
+                            <option value="all">All Available Data</option>
+                            <option value="latest_90d">Last 90 Days</option>
+                            <option value="latest_30d">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="activateAfterTraining" checked>
+                        <label class="form-check-label" for="activateAfterTraining">Activate model after training</label>
+                    </div>
+                </form>
+                <div id="trainingProgress" class="d-none">
+                    <p class="text-center">Training in progress...</p>
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <p class="small text-center" id="trainingStatus">Initializing training...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="startTrainingBtn">Start Training</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize charts with transaction data
+    const txData = {{ transaction_data|tojson }};
+    initDashboardCharts(txData);
+    
+    // Initialize dashboard event handlers
+    initDashboardHandlers();
+    
+    // Initialize show only successful switch
+    document.getElementById('showOnlySuccessfulSwitch').addEventListener('change', function() {
+        const rows = document.querySelectorAll('#transactionTableBody tr');
+        let shownCount = 0;
+        
+        rows.forEach(row => {
+            if (this.checked && row.classList.contains('table-danger')) {
+                row.style.display = 'none';
+            } else {
+                row.style.display = '';
+                shownCount++;
+            }
+        });
+        
+        document.getElementById('shownTxCount').textContent = shownCount;
+    });
+    
+    // Handle train model button
+    document.getElementById('trainModelBtn').addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('trainModelModal'));
+        modal.show();
+    });
+    
+    // Handle start training button
+    document.getElementById('startTrainingBtn').addEventListener('click', function() {
+        // Show progress
+        document.getElementById('trainModelForm').classList.add('d-none');
+        document.getElementById('trainingProgress').classList.remove('d-none');
+        this.disabled = true;
+        
+        // Simulate progress (would be replaced with actual API call)
+        let progress = 0;
+        const progressBar = document.querySelector('#trainingProgress .progress-bar');
+        const statusText = document.getElementById('trainingStatus');
+        const stages = [
+            'Preparing data...',
+            'Preprocessing features...',
+            'Building model architecture...',
+            'Training model...',
+            'Validating model...',
+            'Finalizing model...'
+        ];
+        
+        const interval = setInterval(() => {
+            progress += Math.random() * 5;
+            if (progress > 100) progress = 100;
+            
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+            
+            // Update status text based on progress
+            const stageIndex = Math.min(Math.floor(progress / 20), stages.length - 1);
+            statusText.textContent = stages[stageIndex];
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                
+                // In real app, we would wait for API response
+                setTimeout(() => {
+                    alert('Model training completed!');
+                    document.querySelector('#trainModelModal .btn-close').click();
+                    // Would refresh the models list
+                }, 1000);
+            }
+        }, 500);
+    });
+    
+    // Handle refresh dashboard button
+    document.getElementById('refreshDashboardBtn').addEventListener('click', function() {
+        location.reload();
+    });
+});
+</script>
+{% endblock %}

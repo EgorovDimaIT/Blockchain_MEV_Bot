@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MEV Bot - Home</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <style>
+        .status-indicator {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running {
+            background-color: var(--bs-success);
+        }
+        .status-stopped {
+            background-color: var(--bs-danger);
+        }
+        .status-warning {
+            background-color: var(--bs-warning);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg bg-dark border-bottom">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">MEV Bot</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/opportunities">Opportunities</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/transactions">Transactions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">Settings</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Bot Status
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Status:</div>
+                            <div>
+                                <span class="status-indicator {{ 'status-running' if bot_status.running else 'status-stopped' }}"></span>
+                                {{ 'Running' if bot_status.running else 'Stopped' }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Mode:</div>
+                            <div>
+                                {{ bot_status.mode }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Running since:</div>
+                            <div>
+                                {{ bot_status.start_time.strftime('%Y-%m-%d %H:%M') if bot_status.start_time else 'Not started' }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Blockchain connected:</div>
+                            <div>
+                                <span class="status-indicator {{ 'status-running' if bot_status.blockchain_connected else 'status-stopped' }}"></span>
+                                {{ 'Yes' if bot_status.blockchain_connected else 'No' }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Latest block:</div>
+                            <div>
+                                {{ bot_status.latest_block }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Wallet balance:</div>
+                            <div>
+                                {{ "%.4f"|format(bot_status.wallet_balance_eth if bot_status.wallet_balance_eth is defined else bot_status['wallet_balance_eth']) }} ETH
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>ETH price:</div>
+                            <div>
+                                ${{ "%.2f"|format(bot_status.eth_price_usd if bot_status.eth_price_usd is defined else bot_status['eth_price_usd']) }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Gas price:</div>
+                            <div>
+                                {{ "%.1f"|format(bot_status.current_gas_price if bot_status.current_gas_price is defined else bot_status['current_gas_price']) }} Gwei
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between">
+                            {% if not bot_status.running %}
+                            <div>
+                                <button class="btn btn-primary" id="start-dry-run">Start Dry Run</button>
+                            </div>
+                            <div>
+                                <button class="btn btn-danger" id="start-live-run">Start Live Run</button>
+                            </div>
+                            {% else %}
+                            <div>
+                                <button class="btn btn-warning" id="stop-bot">Stop Bot</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Performance Metrics
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Total opportunities:</div>
+                            <div>
+                                {{ performance_metrics.total_opportunities }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Executed opportunities:</div>
+                            <div>
+                                {{ performance_metrics.executed_opportunities }}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Success rate:</div>
+                            <div>
+                                {% if performance_metrics.executed_opportunities > 0 %}
+                                    {{ "%.1f"|format(performance_metrics.successful_transactions / performance_metrics.executed_opportunities * 100) }}%
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Total profit:</div>
+                            <div>
+                                {{ "%.6f"|format(performance_metrics.total_profit_eth) }} ETH
+                                (${{ "%.2f"|format(performance_metrics.total_profit_usd) }})
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Gas used:</div>
+                            <div>
+                                {{ "%.6f"|format(performance_metrics.total_gas_used_eth) }} ETH
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>ROI:</div>
+                            <div>
+                                {{ "%.2f"|format(performance_metrics.roi_percentage) }}%
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Last 24h profit:</div>
+                            <div>
+                                {{ "%.6f"|format(performance_metrics.last_24h_profit_eth) }} ETH
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mb-3">
+                            <div>Last 24h transactions:</div>
+                            <div>
+                                {{ performance_metrics.last_24h_transactions }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="/dashboard" class="btn btn-primary">Detailed Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Recent Transactions
+                    </div>
+                    <div class="card-body">
+                        {% if performance_metrics.recent_transactions %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Type</th>
+                                        <th>TX Hash</th>
+                                        <th>Status</th>
+                                        <th>Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tx in performance_metrics.recent_transactions %}
+                                    <tr>
+                                        <td>{{ tx.executed_at.strftime('%Y-%m-%d %H:%M') if tx.executed_at else 'Pending' }}</td>
+                                        <td>{{ tx.strategy_type }}</td>
+                                        <td>
+                                            <a href="https://etherscan.io/tx/{{ tx.tx_hash }}" target="_blank">
+                                                {{ tx.tx_hash[:10] }}...
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <span class="badge {{ 'bg-success' if tx.status == 'confirmed' else 'bg-danger' if tx.status == 'failed' else 'bg-warning' }}">
+                                                {{ tx.status }}
+                                            </span>
+                                        </td>
+                                        <td>{{ "%.6f"|format(tx.profit_eth or 0) }} ETH</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info">No transactions found</div>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer">
+                        <a href="/transactions" class="btn btn-primary">View All Transactions</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Start bot in dry run mode
+            document.getElementById('start-dry-run')?.addEventListener('click', function() {
+                fetch('/api/start_bot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        mode: 'dry_run'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                });
+            });
+            
+            // Start bot in live run mode
+            document.getElementById('start-live-run')?.addEventListener('click', function() {
+                if (confirm('WARNING: Live mode will execute real transactions with real funds. Are you sure you want to proceed?')) {
+                    fetch('/api/start_bot', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            mode: 'live'
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alert('Error: ' + data.message);
+                        }
+                    });
+                }
+            });
+            
+            // Stop bot
+            document.getElementById('stop-bot')?.addEventListener('click', function() {
+                fetch('/api/stop_bot', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

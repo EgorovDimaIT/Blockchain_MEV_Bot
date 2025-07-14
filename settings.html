@@ -1,0 +1,534 @@
+{% extends "layout.html" %}
+
+{% block title %}MEV Bot - Settings{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Bot Settings</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="saveAllSettingsBtn">
+            <i data-feather="save"></i>
+            Save All Settings
+        </button>
+    </div>
+</div>
+
+<form method="POST" action="/settings" id="settingsForm">
+    <div class="row">
+        <!-- General Settings Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark text-white">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">General Settings</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Min Profit Threshold -->
+                    <div class="mb-3">
+                        <label for="setting_min_profit_threshold" class="form-label">
+                            Minimum Profit Threshold
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Minimum profit percentage required to execute an opportunity"></i>
+                        </label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="setting_min_profit_threshold" name="setting_min_profit_threshold" step="0.0001" min="0.0001" max="0.05" 
+                                value="{{ settings.min_profit_threshold|default(0.002) }}">
+                            <span class="input-group-text">ETH</span>
+                        </div>
+                        <small class="form-text text-muted">Recommended: 0.001 - 0.005 (0.1% - 0.5%)</small>
+                    </div>
+
+                    <!-- Max Gas Price -->
+                    <div class="mb-3">
+                        <label for="setting_max_gas_price" class="form-label">
+                            Maximum Gas Price
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Maximum gas price in Gwei the bot will use for transactions"></i>
+                        </label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="setting_max_gas_price" name="setting_max_gas_price" step="1" min="1" max="1000" 
+                                value="{{ settings.max_gas_price|default(100) }}">
+                            <span class="input-group-text">Gwei</span>
+                        </div>
+                        <small class="form-text text-muted">Recommended: 50 - 200 Gwei</small>
+                    </div>
+
+                    <!-- Active Strategies -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Active Strategies
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Select which MEV strategies to enable"></i>
+                        </label>
+                        <div class="form-check">
+                            <input class="form-check-input strategy-checkbox" type="checkbox" value="arbitrage" id="strategy_arbitrage" name="active_strategies" 
+                                {% if 'arbitrage' in settings.active_strategies|default('arbitrage,sandwich').split(',') %}checked{% endif %}>
+                            <label class="form-check-label" for="strategy_arbitrage">
+                                Arbitrage (Direct & Triangular)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input strategy-checkbox" type="checkbox" value="sandwich" id="strategy_sandwich" name="active_strategies"
+                                {% if 'sandwich' in settings.active_strategies|default('arbitrage,sandwich').split(',') %}checked{% endif %}>
+                            <label class="form-check-label" for="strategy_sandwich">
+                                Sandwich Attacks
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input strategy-checkbox" type="checkbox" value="liquidation" id="strategy_liquidation" name="active_strategies"
+                                {% if 'liquidation' in settings.active_strategies|default('arbitrage,sandwich').split(',') %}checked{% endif %}>
+                            <label class="form-check-label" for="strategy_liquidation">
+                                Liquidation Opportunities
+                            </label>
+                        </div>
+                        <input type="hidden" id="setting_active_strategies" name="setting_active_strategies" value="{{ settings.active_strategies|default('arbitrage,sandwich') }}">
+                    </div>
+
+                    <!-- Flashbots Enabled -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Flashbots Integration
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Use Flashbots for private transaction submission"></i>
+                        </label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="setting_flashbots_enabled" name="setting_flashbots_enabled" 
+                                {% if settings.flashbots_enabled|default('true') == 'true' %}checked{% endif %}>
+                            <label class="form-check-label" for="setting_flashbots_enabled">
+                                Enable Flashbots MEV-Share
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">Recommended: Enabled (reduces transaction frontrunning risk)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Settings Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark text-white">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Advanced Settings</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Flash Loan Settings -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Flash Loan Settings
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Configure flash loans for capital-efficient strategies"></i>
+                        </label>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="setting_flash_loan_enabled" name="setting_flash_loan_enabled" 
+                                {% if settings.flash_loan_enabled|default('true') == 'true' %}checked{% endif %}>
+                            <label class="form-check-label" for="setting_flash_loan_enabled">
+                                Enable Flash Loans
+                            </label>
+                        </div>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">Flash Loan Provider</span>
+                            <select class="form-select" id="setting_flash_loan_provider" name="setting_flash_loan_provider">
+                                <option value="Aave" {% if settings.flash_loan_provider|default('Aave') == 'Aave' %}selected{% endif %}>Aave</option>
+                                <option value="dYdX" {% if settings.flash_loan_provider|default('Aave') == 'dYdX' %}selected{% endif %}>dYdX</option>
+                                <option value="Balancer" {% if settings.flash_loan_provider|default('Aave') == 'Balancer' %}selected{% endif %}>Balancer</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text">Max Premium</span>
+                            <input type="number" class="form-control" id="setting_max_flash_loan_premium" name="setting_max_flash_loan_premium" step="0.0001" min="0.0001" max="0.01" 
+                                value="{{ settings.max_flash_loan_premium|default(0.0009) }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <small class="form-text text-muted">Default: Aave (0.09% premium)</small>
+                    </div>
+
+                    <!-- Transaction Rate Limiting -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Transaction Rate Limiting
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Limit transaction frequency to avoid overspending on gas"></i>
+                        </label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">Max Transactions Per Hour</span>
+                            <input type="number" class="form-control" id="setting_max_transactions_per_hour" name="setting_max_transactions_per_hour" step="1" min="1" max="60" 
+                                value="{{ settings.max_transactions_per_hour|default(10) }}">
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text">Max Transaction Value</span>
+                            <input type="number" class="form-control" id="setting_max_transaction_value_eth" name="setting_max_transaction_value_eth" step="0.1" min="0.1" max="10" 
+                                value="{{ settings.max_transaction_value_eth|default(1.0) }}">
+                            <span class="input-group-text">ETH</span>
+                        </div>
+                    </div>
+
+                    <!-- ML Model Confidence Threshold -->
+                    <div class="mb-3">
+                        <label for="setting_confidence_threshold" class="form-label">
+                            ML Model Confidence Threshold
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Minimum prediction confidence required to execute an opportunity"></i>
+                        </label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="setting_confidence_threshold" name="setting_confidence_threshold" step="0.01" min="0.5" max="0.99" 
+                                value="{{ settings.confidence_threshold|default(0.7) }}">
+                            <span class="input-group-text">0-1</span>
+                        </div>
+                        <small class="form-text text-muted">Recommended: 0.7-0.8 (higher values are more conservative)</small>
+                    </div>
+
+                    <!-- API Provider Settings -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Blockchain Data Provider
+                            <i data-feather="help-circle" class="text-muted" data-bs-toggle="tooltip" data-bs-placement="right" title="Configure your preferred Ethereum node provider"></i>
+                        </label>
+                        <select class="form-select mb-2" id="setting_provider_type" name="setting_provider_type">
+                            <option value="infura" {% if settings.provider_type|default('infura') == 'infura' %}selected{% endif %}>Infura</option>
+                            <option value="alchemy" {% if settings.provider_type|default('infura') == 'alchemy' %}selected{% endif %}>Alchemy</option>
+                            <option value="chainstack" {% if settings.provider_type|default('infura') == 'chainstack' %}selected{% endif %}>Chainstack</option>
+                            <option value="custom" {% if settings.provider_type|default('infura') == 'custom' %}selected{% endif %}>Custom</option>
+                        </select>
+                        <div class="input-group">
+                            <span class="input-group-text">Provider URL</span>
+                            <input type="text" class="form-control" id="setting_provider_url" name="setting_provider_url" placeholder="https://..." 
+                                value="{{ settings.provider_url|default('') }}">
+                        </div>
+                        <small class="form-text text-muted">You can specify your own provider URL or use environment variables</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monitoring and Alerts Card -->
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card bg-dark text-white">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Monitoring and Alerts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <!-- Enable Alerts -->
+                            <div class="mb-3">
+                                <label class="form-label">Alert Settings</label>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="setting_enable_alerts" name="setting_enable_alerts" 
+                                        {% if settings.enable_alerts|default('true') == 'true' %}checked{% endif %}>
+                                    <label class="form-check-label" for="setting_enable_alerts">
+                                        Enable Alert Notifications
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="setting_alert_on_execution" name="setting_alert_on_execution" 
+                                        {% if settings.alert_on_execution|default('true') == 'true' %}checked{% endif %}>
+                                    <label class="form-check-label" for="setting_alert_on_execution">
+                                        Alert on transaction execution
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="setting_alert_on_error" name="setting_alert_on_error" 
+                                        {% if settings.alert_on_error|default('true') == 'true' %}checked{% endif %}>
+                                    <label class="form-check-label" for="setting_alert_on_error">
+                                        Alert on errors and failures
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="setting_alert_on_profit" name="setting_alert_on_profit" 
+                                        {% if settings.alert_on_profit|default('true') == 'true' %}checked{% endif %}>
+                                    <label class="form-check-label" for="setting_alert_on_profit">
+                                        Alert on high profit opportunities (>0.01 ETH)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <!-- Alert Methods -->
+                            <div class="mb-3">
+                                <label class="form-label">Alert Methods</label>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">Email Address</span>
+                                    <input type="email" class="form-control" id="setting_alert_email" name="setting_alert_email" placeholder="your@email.com" 
+                                        value="{{ settings.alert_email|default('') }}">
+                                </div>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">Webhook URL</span>
+                                    <input type="text" class="form-control" id="setting_alert_webhook" name="setting_alert_webhook" placeholder="https://..." 
+                                        value="{{ settings.alert_webhook|default('') }}">
+                                </div>
+                                <small class="form-text text-muted">You can use Discord, Slack, or custom webhooks</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DEX Settings Card -->
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card bg-dark text-white">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">DEX Priority Settings</h5>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="resetDexesBtn">Reset to Defaults</button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Configure which DEXes to include in opportunity scanning and their priority order.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-dark border border-secondary mb-3">
+                                <div class="card-header">Uniswap Family</div>
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_uniswap_v2" name="dex_uniswap_v2" 
+                                            {% if settings.dex_uniswap_v2|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_uniswap_v2">
+                                            Uniswap V2
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_uniswap_v3" name="dex_uniswap_v3" 
+                                            {% if settings.dex_uniswap_v3|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_uniswap_v3">
+                                            Uniswap V3
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_sushiswap" name="dex_sushiswap" 
+                                            {% if settings.dex_sushiswap|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_sushiswap">
+                                            Sushiswap
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card bg-dark border border-secondary mb-3">
+                                <div class="card-header">Curve Ecosystem</div>
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_curve" name="dex_curve" 
+                                            {% if settings.dex_curve|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_curve">
+                                            Curve (3pool)
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_curve_steth" name="dex_curve_steth" 
+                                            {% if settings.dex_curve_steth|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_curve_steth">
+                                            Curve stETH pool
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_curve_tricrypto" name="dex_curve_tricrypto" 
+                                            {% if settings.dex_curve_tricrypto|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_curve_tricrypto">
+                                            Curve TriCrypto
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card bg-dark border border-secondary mb-3">
+                                <div class="card-header">Other DEXes</div>
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_balancer" name="dex_balancer" 
+                                            {% if settings.dex_balancer|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_balancer">
+                                            Balancer V2
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_oneinch" name="dex_oneinch" 
+                                            {% if settings.dex_oneinch|default('true') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_oneinch">
+                                            1inch
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="dex_dodo" name="dex_dodo" 
+                                            {% if settings.dex_dodo|default('false') == 'true' %}checked{% endif %}>
+                                        <label class="form-check-label" for="dex_dodo">
+                                            DODO
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="reset" class="btn btn-secondary me-md-2">Reset Changes</button>
+                <button type="submit" class="btn btn-primary">Save All Settings</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Export/Import Settings Modal -->
+<div class="modal fade" id="exportImportModal" tabindex="-1" aria-labelledby="exportImportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exportImportModalLabel">Export/Import Settings</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="settingsJson" class="form-label">Settings JSON</label>
+                    <textarea class="form-control" id="settingsJson" rows="10"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="exportSettingsBtn">Export</button>
+                <button type="button" class="btn btn-success" id="importSettingsBtn">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltips.forEach(tooltip => {
+        new bootstrap.Tooltip(tooltip);
+    });
+    
+    // Handle active strategies checkboxes
+    document.querySelectorAll('.strategy-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateActiveStrategies);
+    });
+    
+    function updateActiveStrategies() {
+        const activeStrategies = [];
+        document.querySelectorAll('.strategy-checkbox:checked').forEach(checkbox => {
+            activeStrategies.push(checkbox.value);
+        });
+        document.getElementById('setting_active_strategies').value = activeStrategies.join(',');
+    }
+    
+    // Handle flashbots enabled
+    document.getElementById('setting_flashbots_enabled').addEventListener('change', function() {
+        document.getElementById('setting_flashbots_enabled').value = this.checked ? 'true' : 'false';
+    });
+    
+    // Handle flash loan enabled
+    document.getElementById('setting_flash_loan_enabled').addEventListener('change', function() {
+        document.getElementById('setting_flash_loan_enabled').value = this.checked ? 'true' : 'false';
+    });
+    
+    // Handle provider type selection
+    document.getElementById('setting_provider_type').addEventListener('change', function() {
+        const customUrlField = document.getElementById('setting_provider_url');
+        
+        if (this.value === 'custom') {
+            customUrlField.removeAttribute('disabled');
+            customUrlField.focus();
+        } else {
+            customUrlField.setAttribute('disabled', 'disabled');
+            
+            // Set placeholder based on provider
+            if (this.value === 'infura') {
+                customUrlField.placeholder = 'https://mainnet.infura.io/v3/YOUR_API_KEY';
+            } else if (this.value === 'alchemy') {
+                customUrlField.placeholder = 'https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY';
+            } else if (this.value === 'chainstack') {
+                customUrlField.placeholder = 'https://your-node.chainstack.com/YOUR_API_KEY';
+            }
+        }
+    });
+    
+    // Handle save button
+    document.getElementById('saveAllSettingsBtn').addEventListener('click', function() {
+        document.getElementById('settingsForm').submit();
+    });
+    
+    // Handle reset DEXes button
+    document.getElementById('resetDexesBtn').addEventListener('click', function() {
+        if (confirm('Are you sure you want to reset DEX settings to defaults?')) {
+            // Reset DEX checkboxes to defaults
+            document.getElementById('dex_uniswap_v2').checked = true;
+            document.getElementById('dex_uniswap_v3').checked = true;
+            document.getElementById('dex_sushiswap').checked = true;
+            document.getElementById('dex_curve').checked = true;
+            document.getElementById('dex_curve_steth').checked = true;
+            document.getElementById('dex_curve_tricrypto').checked = true;
+            document.getElementById('dex_balancer').checked = true;
+            document.getElementById('dex_oneinch').checked = true;
+            document.getElementById('dex_dodo').checked = false;
+        }
+    });
+    
+    // Export/Import Settings - Add button to nav
+    const navEnd = document.querySelector('.btn-toolbar');
+    const exportImportBtn = document.createElement('button');
+    exportImportBtn.className = 'btn btn-sm btn-outline-secondary ms-2';
+    exportImportBtn.innerHTML = '<i data-feather="code"></i> Export/Import';
+    exportImportBtn.addEventListener('click', function() {
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('exportImportModal'));
+        modal.show();
+    });
+    navEnd.appendChild(exportImportBtn);
+    feather.replace();
+    
+    // Export settings button
+    document.getElementById('exportSettingsBtn').addEventListener('click', function() {
+        // Gather all form inputs
+        const form = document.getElementById('settingsForm');
+        const formData = new FormData(form);
+        const settings = {};
+        
+        for (const [key, value] of formData.entries()) {
+            settings[key] = value;
+        }
+        
+        // Add checkbox values
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            settings[checkbox.name] = checkbox.checked ? 'true' : 'false';
+        });
+        
+        // Convert to JSON and display
+        document.getElementById('settingsJson').value = JSON.stringify(settings, null, 2);
+    });
+    
+    // Import settings button
+    document.getElementById('importSettingsBtn').addEventListener('click', function() {
+        try {
+            const jsonText = document.getElementById('settingsJson').value;
+            const settings = JSON.parse(jsonText);
+            
+            // Apply settings to form
+            for (const [key, value] of Object.entries(settings)) {
+                const element = document.querySelector(`[name="${key}"]`);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        element.checked = value === 'true';
+                    } else {
+                        element.value = value;
+                    }
+                }
+            }
+            
+            alert('Settings imported successfully! Click Save to apply them.');
+            bootstrap.Modal.getInstance(document.getElementById('exportImportModal')).hide();
+        } catch (e) {
+            alert('Error importing settings: ' + e.message);
+        }
+    });
+});
+</script>
+{% endblock %}

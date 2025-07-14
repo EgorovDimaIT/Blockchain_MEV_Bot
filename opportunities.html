@@ -1,0 +1,887 @@
+{% extends "layout.html" %}
+
+{% block title %}MEV Bot - Opportunities{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Opportunities</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary active" id="allOppsBtn">All</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="arbitrageBtn">Arbitrage</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="sandwichBtn">Sandwich</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="scanOppsBtn">
+            <i data-feather="search"></i>
+            Scan for Opportunities
+        </button>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card bg-dark text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Arbitrage Opportunities Found</h5>
+                    <span class="badge bg-info">{{ arb_opportunities|length }}</span>
+                </div>
+                
+                <div class="d-flex justify-content-between small text-muted mb-2">
+                    <div>Direct: 
+                        {{ arb_opportunities|selectattr('arbitrage_type', 'equalto', 'direct')|list|length }}
+                    </div>
+                    <div>Triangular: 
+                        {{ arb_opportunities|selectattr('arbitrage_type', 'equalto', 'triangular')|list|length }}
+                    </div>
+                    <div>Executed: 
+                        {{ arb_opportunities|selectattr('executed', 'equalto', true)|list|length }}
+                    </div>
+                </div>
+                
+                <div class="progress bg-dark">
+                    {% set direct_pct = (arb_opportunities|selectattr('arbitrage_type', 'equalto', 'direct')|list|length / arb_opportunities|length * 100)|round|int if arb_opportunities|length > 0 else 0 %}
+                    {% set triangular_pct = (arb_opportunities|selectattr('arbitrage_type', 'equalto', 'triangular')|list|length / arb_opportunities|length * 100)|round|int if arb_opportunities|length > 0 else 0 %}
+                    <div class="progress-bar bg-primary" role="progressbar" style="width: {{ direct_pct }}%" aria-valuenow="{{ direct_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {{ triangular_pct }}%" aria-valuenow="{{ triangular_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card bg-dark text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Sandwich Opportunities Found</h5>
+                    <span class="badge bg-info">{{ sandwich_opportunities|length }}</span>
+                </div>
+                
+                <div class="d-flex justify-content-between small text-muted mb-2">
+                    <div>Profitable: 
+                        {{ sandwich_opportunities|selectattr('estimated_profit', 'gt', 0.001)|list|length }}
+                    </div>
+                    <div>High Confidence: 
+                        {{ sandwich_opportunities|selectattr('confidence_score', 'gt', 0.7)|list|length }}
+                    </div>
+                    <div>Executed: 
+                        {{ sandwich_opportunities|selectattr('executed', 'equalto', true)|list|length }}
+                    </div>
+                </div>
+                
+                <div class="progress bg-dark">
+                    {% set executed_pct = (sandwich_opportunities|selectattr('executed', 'equalto', true)|list|length / sandwich_opportunities|length * 100)|round|int if sandwich_opportunities|length > 0 else 0 %}
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ executed_pct }}%" aria-valuenow="{{ executed_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="opportunityTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="arbitrage-tab" data-bs-toggle="tab" data-bs-target="#arbitrage-content" type="button" role="tab" aria-controls="arbitrage-content" aria-selected="true">Arbitrage</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sandwich-tab" data-bs-toggle="tab" data-bs-target="#sandwich-content" type="button" role="tab" aria-controls="sandwich-content" aria-selected="false">Sandwich</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="opportunityTabsContent">
+    <!-- Arbitrage Opportunities Tab -->
+    <div class="tab-pane fade show active" id="arbitrage-content" role="tabpanel" aria-labelledby="arbitrage-tab">
+        <div class="card bg-dark text-white">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="card-title mb-0">Arbitrage Opportunities</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="arbitrageSearchInput" placeholder="Search opportunities...">
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0" id="arbitrageTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Token Pair</th>
+                                <th>DEX Route</th>
+                                <th>Type</th>
+                                <th>Expected Profit</th>
+                                <th>Confidence</th>
+                                <th>Detected At</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if arb_opportunities %}
+                                {% for opp in arb_opportunities %}
+                                    <tr class="{% if opp.executed %}table-success{% endif %}">
+                                        <td>{{ opp.id }}</td>
+                                        <td>
+                                            {% if opp.arbitrage_type == 'direct' %}
+                                                {{ opp.token_in[-4:] }}/{{ opp.token_out[-4:] }}
+                                            {% else %}
+                                                {{ opp.token_in[-4:] }}/{{ opp.token_mid[-4:] if opp.token_mid }}/{{ opp.token_out[-4:] }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if opp.arbitrage_type == 'direct' %}
+                                                {{ opp.dex_1 }} → {{ opp.dex_2 }}
+                                            {% else %}
+                                                {{ opp.dex_1 }} → {{ opp.dex_2 }} → {{ opp.dex_3 }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if opp.arbitrage_type == 'direct' %}
+                                                <span class="badge bg-primary">Direct</span>
+                                            {% else %}
+                                                <span class="badge bg-info">Triangular</span>
+                                                {% if opp.flash_loan %}
+                                                    <span class="badge bg-warning">Flash Loan</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-success">{{ opp.expected_profit|round(6) }} ETH</td>
+                                        <td>
+                                            <div class="progress" style="height: 6px;">
+                                                <div class="progress-bar {% if opp.confidence_score > 0.7 %}bg-success{% elif opp.confidence_score > 0.5 %}bg-warning{% else %}bg-danger{% endif %}" role="progressbar" style="width: {{ (opp.confidence_score * 100)|round|int }}%" aria-valuenow="{{ (opp.confidence_score * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <small>{{ (opp.confidence_score * 100)|round|int }}%</small>
+                                        </td>
+                                        <td>{{ opp.detected_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        <td>
+                                            {% if opp.executed %}
+                                                <span class="badge bg-success">Executed</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Pending</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-info btn-sm view-arb-btn" data-id="{{ opp.id }}">
+                                                    <i data-feather="eye"></i>
+                                                </button>
+                                                {% if not opp.executed and bot_status.running and bot_status.mode == 'live' %}
+                                                    <button type="button" class="btn btn-outline-success btn-sm execute-arb-btn" data-id="{{ opp.id }}">
+                                                        <i data-feather="play"></i>
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="9" class="text-center">No arbitrage opportunities found</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sandwich Opportunities Tab -->
+    <div class="tab-pane fade" id="sandwich-content" role="tabpanel" aria-labelledby="sandwich-tab">
+        <div class="card bg-dark text-white">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="card-title mb-0">Sandwich Opportunities</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="sandwichSearchInput" placeholder="Search opportunities...">
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0" id="sandwichTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Target Tx</th>
+                                <th>Token</th>
+                                <th>DEX</th>
+                                <th>Target Amount</th>
+                                <th>Est. Profit</th>
+                                <th>Confidence</th>
+                                <th>Detected At</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if sandwich_opportunities %}
+                                {% for opp in sandwich_opportunities %}
+                                    <tr class="{% if opp.executed %}table-success{% endif %}">
+                                        <td>{{ opp.id }}</td>
+                                        <td>
+                                            <a href="https://etherscan.io/tx/{{ opp.target_tx_hash }}" target="_blank" class="text-truncate" style="max-width: 150px; display: inline-block;">
+                                                {{ opp.target_tx_hash[:8] }}...{{ opp.target_tx_hash[-6:] }}
+                                            </a>
+                                        </td>
+                                        <td>{{ opp.token_address[-4:] }}</td>
+                                        <td>{{ opp.dex }}</td>
+                                        <td>{{ opp.target_amount|round(4) }}</td>
+                                        <td class="text-success">{{ opp.estimated_profit|round(6) }} ETH</td>
+                                        <td>
+                                            <div class="progress" style="height: 6px;">
+                                                <div class="progress-bar {% if opp.confidence_score > 0.7 %}bg-success{% elif opp.confidence_score > 0.5 %}bg-warning{% else %}bg-danger{% endif %}" role="progressbar" style="width: {{ (opp.confidence_score * 100)|round|int }}%" aria-valuenow="{{ (opp.confidence_score * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <small>{{ (opp.confidence_score * 100)|round|int }}%</small>
+                                        </td>
+                                        <td>{{ opp.detected_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        <td>
+                                            {% if opp.executed %}
+                                                <span class="badge bg-success">Executed</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Pending</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-info btn-sm view-sandwich-btn" data-id="{{ opp.id }}">
+                                                    <i data-feather="eye"></i>
+                                                </button>
+                                                {% if not opp.executed and bot_status.running and bot_status.mode == 'live' %}
+                                                    <button type="button" class="btn btn-outline-success btn-sm execute-sandwich-btn" data-id="{{ opp.id }}">
+                                                        <i data-feather="play"></i>
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="10" class="text-center">No sandwich opportunities found</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Opportunity Detail Modal -->
+<div class="modal fade" id="opportunityDetailModal" tabindex="-1" aria-labelledby="opportunityDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header">
+                <h5 class="modal-title" id="opportunityDetailModalLabel">Opportunity Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card bg-dark text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Basic Information</h6>
+                                <table class="table table-dark table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>ID:</td>
+                                            <td id="detail-id">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Type:</td>
+                                            <td id="detail-type">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Detected At:</td>
+                                            <td id="detail-detected-at">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Status:</td>
+                                            <td id="detail-status">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-dark text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Profit Information</h6>
+                                <table class="table table-dark table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Expected Profit:</td>
+                                            <td id="detail-profit">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Confidence Score:</td>
+                                            <td id="detail-confidence">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>ML Adjustment:</td>
+                                            <td id="detail-ml-adjustment">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Estimated Gas:</td>
+                                            <td id="detail-gas">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Token & DEX Information (changes based on opportunity type) -->
+                <div id="arbitrage-details" class="d-none">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="card bg-dark text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Arbitrage Path</h6>
+                                    <div class="d-flex justify-content-between align-items-center mt-3">
+                                        <div class="text-center">
+                                            <div class="bg-secondary p-2 rounded">
+                                                <span id="arb-token-in">-</span>
+                                            </div>
+                                            <small class="text-muted" id="arb-amount-in">-</small>
+                                        </div>
+                                        <div>
+                                            <i data-feather="arrow-right"></i>
+                                            <div class="badge bg-info" id="arb-dex-1">-</div>
+                                            <i data-feather="arrow-right"></i>
+                                        </div>
+                                        <div class="text-center d-none" id="arb-mid-token-container">
+                                            <div class="bg-secondary p-2 rounded">
+                                                <span id="arb-token-mid">-</span>
+                                            </div>
+                                            <small class="text-muted" id="arb-amount-mid">-</small>
+                                        </div>
+                                        <div class="d-none" id="arb-mid-arrow-container">
+                                            <i data-feather="arrow-right"></i>
+                                            <div class="badge bg-info" id="arb-dex-2">-</div>
+                                            <i data-feather="arrow-right"></i>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="bg-secondary p-2 rounded">
+                                                <span id="arb-token-out">-</span>
+                                            </div>
+                                            <small class="text-muted" id="arb-amount-out">-</small>
+                                        </div>
+                                        <div id="arb-last-arrow-container">
+                                            <i data-feather="arrow-right"></i>
+                                            <div class="badge bg-info" id="arb-dex-3">-</div>
+                                            <i data-feather="arrow-right"></i>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="bg-success p-2 rounded">
+                                                <span id="arb-final-token">-</span>
+                                            </div>
+                                            <small class="text-muted" id="arb-amount-final">-</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card bg-dark text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Additional Information</h6>
+                                    <table class="table table-dark table-sm">
+                                        <tbody>
+                                            <tr>
+                                                <td>Arbitrage Type:</td>
+                                                <td id="arb-type">-</td>
+                                            </tr>
+                                            <tr class="d-none" id="arb-flash-loan-row">
+                                                <td>Flash Loan:</td>
+                                                <td id="arb-flash-loan">-</td>
+                                            </tr>
+                                            <tr class="d-none" id="arb-flash-loan-source-row">
+                                                <td>Flash Loan Source:</td>
+                                                <td id="arb-flash-loan-source">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Profit Percentage:</td>
+                                                <td id="arb-profit-percentage">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Transaction ID:</td>
+                                                <td id="arb-transaction-id">-</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="sandwich-details" class="d-none">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="card bg-dark text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Sandwich Attack Details</h6>
+                                    <div class="d-flex justify-content-between align-items-center mt-3">
+                                        <div class="text-center">
+                                            <div class="bg-success p-2 rounded">
+                                                <span>Front-Run</span>
+                                            </div>
+                                            <small class="text-muted" id="sandwich-front-amount">-</small>
+                                        </div>
+                                        <div>
+                                            <i data-feather="arrow-right"></i>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="bg-danger p-2 rounded">
+                                                <span>Victim Tx</span>
+                                            </div>
+                                            <small class="text-muted" id="sandwich-victim-amount">-</small>
+                                        </div>
+                                        <div>
+                                            <i data-feather="arrow-right"></i>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="bg-success p-2 rounded">
+                                                <span>Back-Run</span>
+                                            </div>
+                                            <small class="text-muted" id="sandwich-back-amount">-</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card bg-dark text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Target Transaction Details</h6>
+                                    <table class="table table-dark table-sm">
+                                        <tbody>
+                                            <tr>
+                                                <td>Target Tx Hash:</td>
+                                                <td id="sandwich-target-tx">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Token Address:</td>
+                                                <td id="sandwich-token">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>DEX:</td>
+                                                <td id="sandwich-dex">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Price Impact:</td>
+                                                <td id="sandwich-price-impact">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Victim Gas Price:</td>
+                                                <td id="sandwich-victim-gas">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td>MEV-Share:</td>
+                                                <td id="sandwich-mev-share">-</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success d-none" id="modal-execute-btn">Execute Now</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scanning Modal -->
+<div class="modal fade" id="scanningModal" tabindex="-1" aria-labelledby="scanningModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header">
+                <h5 class="modal-title" id="scanningModalLabel">Scanning for Opportunities</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Scanning the blockchain for MEV opportunities...</p>
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="scanProgressBar"></div>
+                </div>
+                <p class="small text-muted" id="scanStatus">Initializing scan...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize feather icons
+    feather.replace();
+    
+    // Filter buttons
+    document.getElementById('allOppsBtn').addEventListener('click', function() {
+        showAllRows();
+        setActiveButton(this);
+    });
+    
+    document.getElementById('arbitrageBtn').addEventListener('click', function() {
+        showArbitrageTab();
+        setActiveButton(this);
+    });
+    
+    document.getElementById('sandwichBtn').addEventListener('click', function() {
+        showSandwichTab();
+        setActiveButton(this);
+    });
+    
+    function setActiveButton(btn) {
+        document.querySelectorAll('.btn-group .btn').forEach(button => {
+            button.classList.remove('active');
+        });
+        btn.classList.add('active');
+    }
+    
+    function showAllRows() {
+        // Show both tabs
+        document.getElementById('arbitrage-tab').click();
+    }
+    
+    function showArbitrageTab() {
+        document.getElementById('arbitrage-tab').click();
+    }
+    
+    function showSandwichTab() {
+        document.getElementById('sandwich-tab').click();
+    }
+    
+    // Search functionality for arbitrage table
+    document.getElementById('arbitrageSearchInput').addEventListener('keyup', function() {
+        const value = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#arbitrageTable tbody tr');
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            if (text.indexOf(value) > -1) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+    
+    // Search functionality for sandwich table
+    document.getElementById('sandwichSearchInput').addEventListener('keyup', function() {
+        const value = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#sandwichTable tbody tr');
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            if (text.indexOf(value) > -1) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+    
+    // View arbitrage opportunity details
+    document.querySelectorAll('.view-arb-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            showArbitrageDetails(id);
+        });
+    });
+    
+    // View sandwich opportunity details
+    document.querySelectorAll('.view-sandwich-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            showSandwichDetails(id);
+        });
+    });
+    
+    // Execute arbitrage opportunity
+    document.querySelectorAll('.execute-arb-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            if (confirm('Are you sure you want to execute this arbitrage opportunity?')) {
+                alert('Execution functionality would be implemented here in a real application.');
+                // In a real app, this would call an API endpoint to execute the opportunity
+            }
+        });
+    });
+    
+    // Execute sandwich opportunity
+    document.querySelectorAll('.execute-sandwich-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            if (confirm('Are you sure you want to execute this sandwich opportunity?')) {
+                alert('Execution functionality would be implemented here in a real application.');
+                // In a real app, this would call an API endpoint to execute the opportunity
+            }
+        });
+    });
+    
+    // Modal execution button
+    document.getElementById('modal-execute-btn').addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const type = this.getAttribute('data-type');
+        
+        if (confirm(`Are you sure you want to execute this ${type} opportunity?`)) {
+            alert('Execution functionality would be implemented here in a real application.');
+            // In a real app, this would call an API endpoint to execute the opportunity
+        }
+    });
+    
+    // Scan for opportunities button
+    document.getElementById('scanOppsBtn').addEventListener('click', function() {
+        showScanningModal();
+        simulateScan();
+    });
+    
+    function showScanningModal() {
+        const modal = new bootstrap.Modal(document.getElementById('scanningModal'));
+        modal.show();
+    }
+    
+    function simulateScan() {
+        const progressBar = document.getElementById('scanProgressBar');
+        const statusText = document.getElementById('scanStatus');
+        let progress = 0;
+        
+        const scanStages = [
+            'Connecting to Ethereum node...',
+            'Scanning mempool for transactions...',
+            'Analyzing DEX prices...',
+            'Identifying arbitrage opportunities...',
+            'Calculating price impacts for sandwich attacks...',
+            'Computing profitability with ML models...',
+            'Finalizing results...'
+        ];
+        
+        const interval = setInterval(() => {
+            progress += Math.random() * 5;
+            if (progress > 100) progress = 100;
+            
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+            
+            // Update status text based on progress
+            const stageIndex = Math.min(Math.floor(progress / (100 / scanStages.length)), scanStages.length - 1);
+            statusText.textContent = scanStages[stageIndex];
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                
+                // In a real app, we would refresh the page with new data from the server
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        }, 100);
+    }
+    
+    // Mock data for the details view
+    // In a real app, this would fetch from an API endpoint
+    function showArbitrageDetails(id) {
+        // Find the opportunity in the table
+        const row = document.querySelector(`#arbitrageTable tr:has(button[data-id="${id}"])`);
+        if (!row) return;
+        
+        // Get data from row
+        const cols = row.querySelectorAll('td');
+        
+        // Reset modal visibility
+        document.getElementById('arbitrage-details').classList.remove('d-none');
+        document.getElementById('sandwich-details').classList.add('d-none');
+        
+        // Set opportunity details
+        document.getElementById('detail-id').textContent = cols[0].textContent;
+        document.getElementById('detail-type').textContent = 'Arbitrage';
+        document.getElementById('detail-detected-at').textContent = cols[6].textContent;
+        document.getElementById('detail-status').textContent = cols[7].textContent;
+        document.getElementById('detail-profit').textContent = cols[4].textContent;
+        
+        const confidenceText = cols[5].textContent.trim();
+        document.getElementById('detail-confidence').textContent = confidenceText;
+        
+        // Set arbitrage-specific details
+        document.getElementById('arb-type').textContent = cols[3].textContent;
+        
+        // Parse token pair and DEX route
+        const tokenPair = cols[1].textContent.trim();
+        const dexRoute = cols[2].textContent.trim();
+        
+        // Handle direct vs triangular
+        if (tokenPair.includes('/') && !tokenPair.includes('//')) {
+            // Direct arbitrage
+            const [tokenIn, tokenOut] = tokenPair.split('/');
+            const [dex1, dex2] = dexRoute.split('→').map(d => d.trim());
+            
+            document.getElementById('arb-token-in').textContent = tokenIn;
+            document.getElementById('arb-token-out').textContent = tokenOut;
+            document.getElementById('arb-final-token').textContent = tokenIn;
+            
+            document.getElementById('arb-dex-1').textContent = dex1;
+            document.getElementById('arb-dex-3').textContent = dex2;
+            
+            // Hide middle token for direct arbitrage
+            document.getElementById('arb-mid-token-container').classList.add('d-none');
+            document.getElementById('arb-mid-arrow-container').classList.add('d-none');
+            
+            // Set mock amounts
+            document.getElementById('arb-amount-in').textContent = '1.0000 ETH';
+            document.getElementById('arb-amount-out').textContent = '1000.00 USDC';
+            document.getElementById('arb-amount-final').textContent = '1.0050 ETH';
+            
+            // Flash loan rows
+            document.getElementById('arb-flash-loan-row').classList.add('d-none');
+            document.getElementById('arb-flash-loan-source-row').classList.add('d-none');
+        } else {
+            // Triangular arbitrage
+            const tokens = tokenPair.split('/');
+            const dexes = dexRoute.split('→').map(d => d.trim());
+            
+            document.getElementById('arb-token-in').textContent = tokens[0];
+            document.getElementById('arb-token-mid').textContent = tokens[1];
+            document.getElementById('arb-token-out').textContent = tokens[2];
+            document.getElementById('arb-final-token').textContent = tokens[0];
+            
+            document.getElementById('arb-dex-1').textContent = dexes[0];
+            document.getElementById('arb-dex-2').textContent = dexes[1];
+            document.getElementById('arb-dex-3').textContent = dexes[2];
+            
+            // Show middle token for triangular arbitrage
+            document.getElementById('arb-mid-token-container').classList.remove('d-none');
+            document.getElementById('arb-mid-arrow-container').classList.remove('d-none');
+            
+            // Set mock amounts
+            document.getElementById('arb-amount-in').textContent = '10.0000 ETH';
+            document.getElementById('arb-amount-mid').textContent = '20000.00 USDC';
+            document.getElementById('arb-amount-out').textContent = '10.00 WBTC';
+            document.getElementById('arb-amount-final').textContent = '10.0250 ETH';
+            
+            // Flash loan info
+            document.getElementById('arb-flash-loan-row').classList.remove('d-none');
+            document.getElementById('arb-flash-loan-source-row').classList.remove('d-none');
+            document.getElementById('arb-flash-loan').textContent = 'Yes';
+            document.getElementById('arb-flash-loan-source').textContent = 'Aave';
+        }
+        
+        // Set profit percentage and gas estimate
+        document.getElementById('arb-profit-percentage').textContent = '0.5%';
+        document.getElementById('detail-ml-adjustment').textContent = '-10% (adjusted for slippage)';
+        document.getElementById('detail-gas').textContent = '0.0045 ETH (150,000 gas at 30 Gwei)';
+        
+        // Set transaction ID if executed
+        if (cols[7].textContent.includes('Executed')) {
+            document.getElementById('arb-transaction-id').textContent = 'Tx #12345';
+        } else {
+            document.getElementById('arb-transaction-id').textContent = 'Not executed yet';
+        }
+        
+        // Show execute button if opportunity is not executed
+        const modalExecuteBtn = document.getElementById('modal-execute-btn');
+        if (cols[7].textContent.includes('Pending') && {{ 'true' if bot_status.running and bot_status.mode == 'live' else 'false' }}) {
+            modalExecuteBtn.classList.remove('d-none');
+            modalExecuteBtn.setAttribute('data-id', id);
+            modalExecuteBtn.setAttribute('data-type', 'arbitrage');
+        } else {
+            modalExecuteBtn.classList.add('d-none');
+        }
+        
+        // Set modal title
+        document.getElementById('opportunityDetailModalLabel').textContent = `Arbitrage Opportunity #${id}`;
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('opportunityDetailModal'));
+        modal.show();
+        
+        // Re-initialize feather icons in the modal
+        feather.replace();
+    }
+    
+    function showSandwichDetails(id) {
+        // Find the opportunity in the table
+        const row = document.querySelector(`#sandwichTable tr:has(button[data-id="${id}"])`);
+        if (!row) return;
+        
+        // Get data from row
+        const cols = row.querySelectorAll('td');
+        
+        // Reset modal visibility
+        document.getElementById('arbitrage-details').classList.add('d-none');
+        document.getElementById('sandwich-details').classList.remove('d-none');
+        
+        // Set opportunity details
+        document.getElementById('detail-id').textContent = cols[0].textContent;
+        document.getElementById('detail-type').textContent = 'Sandwich Attack';
+        document.getElementById('detail-detected-at').textContent = cols[7].textContent;
+        document.getElementById('detail-status').textContent = cols[8].textContent;
+        document.getElementById('detail-profit').textContent = cols[5].textContent;
+        
+        const confidenceText = cols[6].textContent.trim();
+        document.getElementById('detail-confidence').textContent = confidenceText;
+        
+        // Set sandwich-specific details
+        document.getElementById('sandwich-target-tx').innerHTML = `<a href="https://etherscan.io/tx/${cols[1].querySelector('a').getAttribute('href').split('/').pop()}" target="_blank">${cols[1].textContent.trim()}</a>`;
+        document.getElementById('sandwich-token').textContent = cols[2].textContent;
+        document.getElementById('sandwich-dex').textContent = cols[3].textContent;
+        
+        // Set mock amounts and details
+        document.getElementById('sandwich-front-amount').textContent = '1.5 ETH';
+        document.getElementById('sandwich-victim-amount').textContent = cols[4].textContent;
+        document.getElementById('sandwich-back-amount').textContent = '1.52 ETH';
+        
+        document.getElementById('sandwich-price-impact').textContent = '2.3%';
+        document.getElementById('sandwich-victim-gas').textContent = '25 Gwei';
+        document.getElementById('sandwich-mev-share').textContent = 'No';
+        
+        // Additional details
+        document.getElementById('detail-ml-adjustment').textContent = '-15% (adjusted for risk)';
+        document.getElementById('detail-gas').textContent = '0.006 ETH (200,000 gas at 30 Gwei)';
+        
+        // Show execute button if opportunity is not executed
+        const modalExecuteBtn = document.getElementById('modal-execute-btn');
+        if (cols[8].textContent.includes('Pending') && {{ 'true' if bot_status.running and bot_status.mode == 'live' else 'false' }}) {
+            modalExecuteBtn.classList.remove('d-none');
+            modalExecuteBtn.setAttribute('data-id', id);
+            modalExecuteBtn.setAttribute('data-type', 'sandwich');
+        } else {
+            modalExecuteBtn.classList.add('d-none');
+        }
+        
+        // Set modal title
+        document.getElementById('opportunityDetailModalLabel').textContent = `Sandwich Opportunity #${id}`;
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('opportunityDetailModal'));
+        modal.show();
+        
+        // Re-initialize feather icons in the modal
+        feather.replace();
+    }
+});
+</script>
+{% endblock %}
